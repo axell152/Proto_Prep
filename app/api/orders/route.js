@@ -8,11 +8,8 @@ import {
   parseProductionPdf
 } from '@/lib/pdfParser';
 
-export const runtime =
-  'nodejs';
-
-export const dynamic =
-  'force-dynamic';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 /* ============================================================
    LISTE DES COMMANDES
@@ -24,120 +21,135 @@ export async function GET() {
 
     const query = sql();
 
-    const orders =
-      await query`
-        SELECT
-          o.*,
-          COUNT(i.id)::int AS item_count
-        FROM orders o
-        LEFT JOIN order_items i
-          ON i.order_id = o.id
-          AND i.is_preparable = TRUE
-        GROUP BY o.id
-        ORDER BY
-          CASE o.status
-            WHEN 'EN_COURS' THEN 1
-            WHEN 'A_PREPARER' THEN 2
-            ELSE 3
-          END,
-          o.created_at DESC
-      `;
+    const orders = await query`
+      SELECT
+        o.*,
+        COUNT(i.id)::int AS item_count
+      FROM orders o
+      LEFT JOIN order_items i
+        ON i.order_id = o.id
+        AND i.is_preparable = TRUE
+        AND i.production_status <> 'OF'
+      GROUP BY o.id
+      ORDER BY
+        CASE o.status
+          WHEN 'EN_COURS' THEN 1
+          WHEN 'A_PREPARER' THEN 2
+          ELSE 3
+        END,
+        o.created_at DESC
+    `;
 
     return Response.json({
       orders
     });
+
   } catch (error) {
     return Response.json(
       {
-        error:
-          error.message
+        error: error.message
       },
       { status: 500 }
     );
   }
 }
 
+
 /* ============================================================
    NETTOYAGE DES DONNÉES VALIDÉES
    ============================================================ */
 
-function cleanParsedData(
-  parsed
-) {
+function cleanParsedData(parsed) {
   if (
     !parsed ||
-    !Array.isArray(
-      parsed.items
-    )
+    !Array.isArray(parsed.items)
   ) {
     throw new Error(
       'Données de contrôle invalides.'
     );
   }
 
-  const items =
-    parsed.items
-      .filter(
-        (item) =>
-          item &&
-          String(
-            item.code || ''
-          ).trim()
-      )
-      .map(
-        (item, index) => {
-          const requestedQty =
-            Number(
-              item.requestedQty
-            );
+  const items = parsed.items
+    .filter(
+      (item) =>
+        item &&
+        String(
+          item.code || ''
+        ).trim()
+    )
+    .map(
+      (item, index) => {
+        const requestedQty =
+          Number(
+            item.requestedQty
+          );
 
-          if (
-            !Number.isInteger(
-              requestedQty
-            ) ||
-            requestedQty < 0
-          ) {
-            throw new Error(
-              `Quantité invalide pour ${
-                item.code ||
-                `la ligne ${
-                  index + 1
-                }`
-              }.`
-            );
-          }
-
-          return {
-            code: String(
-              item.code
-            )
-              .trim()
-              .toUpperCase(),
-
-            designation:
-              String(
-                item.designation ||
-                  ''
-              ).trim(),
-
-            requestedQty,
-
-            preparedQty: 0,
-
-            location:
-              String(
-                item.location ||
-                  ''
-              ).trim(),
-
-            isPreparable:
-              item.isPreparable !==
-              false,
-
-            sortOrder: index
-          };
+        if (
+          !Number.isInteger(
+            requestedQty
+          ) ||
+          requestedQty < 0
+        ) {
+          throw new Error(
+            `Quantité invalide pour ${
+              item.code ||
+              `la ligne ${index + 1}`
+            }.`
+          );
         }
-      );
+
+        /*
+         * Par défaut :
+         *
+         * rien = STOCK
+         *
+         * Le bureau peut choisir OF.
+         *
+         * OFF n'est pas proposé à l'import :
+         * il intervient lorsque la fabrication est terminée.
+         */
+
+        const productionStatus =
+          item.isPreparable === false
+            ? 'STOCK'
+            : String(
+                item.productionStatus || 'STOCK'
+              )
+                .trim()
+                .toUpperCase() === 'OF'
+              ? 'OF'
+              : 'STOCK';
+
+        return {
+          code: String(
+            item.code
+          )
+            .trim()
+            .toUpperCase(),
+
+          designation:
+            String(
+              item.designation || ''
+            ).trim(),
+
+          requestedQty,
+
+          preparedQty: 0,
+
+          location:
+            String(
+              item.location || ''
+            ).trim(),
+
+          isPreparable:
+            item.isPreparable !== false,
+
+          productionStatus,
+
+          sortOrder: index
+        };
+      }
+    );
 
   if (!items.length) {
     throw new Error(
@@ -148,8 +160,7 @@ function cleanParsedData(
   return {
     orderNumber:
       String(
-        parsed.orderNumber ||
-          ''
+        parsed.orderNumber || ''
       ).trim(),
 
     client:
@@ -159,27 +170,24 @@ function cleanParsedData(
 
     internalReference:
       String(
-        parsed.internalReference ||
-          ''
+        parsed.internalReference || ''
       ).trim(),
 
     pickupDate:
       String(
-        parsed.pickupDate ||
-          ''
+        parsed.pickupDate || ''
       ).trim(),
 
     items
   };
 }
 
+
 /* ============================================================
    CRÉATION DE LA COMMANDE
    ============================================================ */
 
-export async function POST(
-  request
-) {
+export async function POST(request) {
   try {
     await ensureSchema();
 
@@ -193,9 +201,8 @@ export async function POST(
       'import.pdf';
 
     /*
-     * NOUVEAU MODE :
-     *
-     * Le bureau vérifie d'abord le PDF,
+     * Mode actuel :
+     * le bureau vérifie d'abord le PDF,
      * puis envoie les données corrigées.
      */
 
@@ -207,9 +214,22 @@ export async function POST(
       const body =
         await request.json();
 
+      /*
+       * Accepte les deux formats :
+       *
+       * { parsed: {...} }
+       *
+       * ou directement :
+       *
+       * { orderNumber, items, ... }
+       *
+       * Cela évite une incompatibilité
+       * entre la page admin et l'API.
+       */
+
       parsed =
         cleanParsedData(
-          body.parsed
+          body.parsed || body
         );
 
       sourceFilename =
@@ -217,14 +237,12 @@ export async function POST(
           body.sourceFilename ||
             sourceFilename
         );
-    }
 
-    /*
-     * Ancien fonctionnement conservé
-     * pour éviter de casser l'API.
-     */
+    } else {
+      /*
+       * Ancien fonctionnement conservé.
+       */
 
-    else {
       const form =
         await request.formData();
 
@@ -336,6 +354,7 @@ export async function POST(
           prepared_qty,
           location,
           is_preparable,
+          production_status,
           sort_order
         )
         VALUES (
@@ -346,6 +365,7 @@ export async function POST(
           ${item.preparedQty},
           ${item.location},
           ${item.isPreparable},
+          ${item.productionStatus},
           ${item.sortOrder}
         )
       `;
@@ -365,6 +385,7 @@ export async function POST(
       detectedItems:
         parsed.items.length
     });
+
   } catch (error) {
     console.error(error);
 
