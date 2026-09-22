@@ -69,12 +69,13 @@ function cleanParsedData(parsed) {
     );
   }
 
-  const items = parsed.items
+  const items =
+  parsed.items
     .filter(
       (item) =>
         item &&
         String(
-          item.code || ''
+          item.ref || item.code || ''
         ).trim()
     )
     .map(
@@ -122,10 +123,10 @@ function cleanParsedData(parsed) {
 
         return {
           code: String(
-            item.code
-          )
-            .trim()
-            .toUpperCase(),
+  item.ref || item.code || ''
+)
+  .trim()
+  .toUpperCase(),
 
           designation:
             String(
@@ -365,7 +366,7 @@ export async function POST(request) {
           ${item.preparedQty},
           ${item.location},
           ${item.isPreparable},
-          ${item.productionStatus},
+          ${item.productionStatus || 'STOCK'},
           ${item.sortOrder}
         )
       `;
