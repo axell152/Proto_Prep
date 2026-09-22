@@ -2,12 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import * as pdfjsLib from 'pdfjs-dist';
 import Topbar from '@/components/Topbar';
 import { parseProductionPages } from '@/lib/pdfParser';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  '/pdf.worker.min.mjs';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -16,8 +12,7 @@ export default function AdminPage() {
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [validated, setValidated] =
-    useState(false);
+  const [validated, setValidated] = useState(false);
 
   async function analyzePdf() {
     setError('');
@@ -25,35 +20,32 @@ export default function AdminPage() {
     setValidated(false);
 
     if (!file) {
-      setError(
-        'Choisis un fichier PDF.'
-      );
+      setError('Choisis un fichier PDF.');
       return;
     }
 
     if (
-      file.type !==
-        'application/pdf' &&
-      !file.name
-        .toLowerCase()
-        .endsWith('.pdf')
+      file.type !== 'application/pdf' &&
+      !file.name.toLowerCase().endsWith('.pdf')
     ) {
-      setError(
-        'Le fichier doit être un PDF.'
-      );
+      setError('Le fichier doit être un PDF.');
       return;
     }
 
     setBusy(true);
 
     try {
-      const buffer =
-        await file.arrayBuffer();
+      // PDF.js est chargé UNIQUEMENT côté navigateur
+      const pdfjsLib = await import('pdfjs-dist');
 
-      const pdf =
-        await pdfjsLib.getDocument({
-          data: new Uint8Array(buffer),
-        }).promise;
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        '/pdf.worker.min.mjs';
+
+      const buffer = await file.arrayBuffer();
+
+      const pdf = await pdfjsLib.getDocument({
+        data: new Uint8Array(buffer),
+      }).promise;
 
       const pages = [];
 
@@ -62,58 +54,41 @@ export default function AdminPage() {
         pageNumber <= pdf.numPages;
         pageNumber++
       ) {
-        const page =
-          await pdf.getPage(
-            pageNumber
-          );
+        const page = await pdf.getPage(pageNumber);
 
-        const viewport =
-          page.getViewport({
-            scale: 1,
-          });
+        const viewport = page.getViewport({
+          scale: 1,
+        });
 
-        const content =
-          await page.getTextContent();
+        const content = await page.getTextContent();
 
-        const items =
-          content.items
-            .filter(
-              (item) =>
-                typeof item.str ===
-                  'string' &&
-                item.str.trim()
-            )
-            .map((item) => ({
-              str: item.str,
-              x:
-                Number(
-                  item.transform?.[4] ||
-                    0
-                ),
-              y:
-                Number(
-                  item.transform?.[5] ||
-                    0
-                ),
-              w:
-                Number(
-                  item.width || 0
-                ),
-            }));
+        const items = content.items
+          .filter(
+            (item) =>
+              typeof item.str === 'string' &&
+              item.str.trim()
+          )
+          .map((item) => ({
+            str: item.str,
+            x: Number(
+              item.transform?.[4] || 0
+            ),
+            y: Number(
+              item.transform?.[5] || 0
+            ),
+            w: Number(
+              item.width || 0
+            ),
+          }));
 
         pages.push({
-          width:
-            viewport.width,
-          height:
-            viewport.height,
+          width: viewport.width,
+          height: viewport.height,
           items,
         });
       }
 
-      const result =
-        parseProductionPages(
-          pages
-        );
+      const result = parseProductionPages(pages);
 
       setParsed(result);
     } catch (e) {
@@ -128,25 +103,18 @@ export default function AdminPage() {
     }
   }
 
-
-  function updateItem(
-    index,
-    field,
-    value
-  ) {
+  function updateItem(index, field, value) {
     setParsed((current) => {
       if (!current) {
         return current;
       }
 
-      const items =
-        [...current.items];
+      const items = [...current.items];
 
       items[index] = {
         ...items[index],
         [field]:
-          field ===
-          'requestedQty'
+          field === 'requestedQty'
             ? Number(value)
             : value,
       };
@@ -157,7 +125,6 @@ export default function AdminPage() {
       };
     });
   }
-
 
   async function createOrder() {
     if (!parsed) {
@@ -175,23 +142,19 @@ export default function AdminPage() {
     setError('');
 
     try {
-      const response =
-        await fetch(
-          '/api/orders',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type':
-                'application/json',
-            },
-            body: JSON.stringify(
-              parsed
-            ),
-          }
-        );
+      const response = await fetch(
+        '/api/orders',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify(parsed),
+        }
+      );
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -211,7 +174,6 @@ export default function AdminPage() {
       setBusy(false);
     }
   }
-
 
   return (
     <>
@@ -273,9 +235,7 @@ export default function AdminPage() {
               disabled={
                 busy || !file
               }
-              onClick={
-                analyzePdf
-              }
+              onClick={analyzePdf}
             >
               {busy
                 ? 'Analyse du PDF…'
@@ -283,7 +243,6 @@ export default function AdminPage() {
             </button>
           </div>
         </div>
-
 
         {parsed && (
           <div
@@ -343,9 +302,7 @@ export default function AdminPage() {
               </div>
             </div>
 
-
-            {parsed.warnings.length >
-              0 && (
+            {parsed.warnings.length > 0 && (
               <div
                 className="notice"
                 style={{
@@ -373,11 +330,9 @@ export default function AdminPage() {
               </div>
             )}
 
-
             <div
               style={{
-                overflowX:
-                  'auto',
+                overflowX: 'auto',
               }}
             >
               <table>
@@ -473,7 +428,6 @@ export default function AdminPage() {
               </table>
             </div>
 
-
             <div
               style={{
                 marginTop: 20,
@@ -481,8 +435,7 @@ export default function AdminPage() {
             >
               <label
                 style={{
-                  display:
-                    'flex',
+                  display: 'flex',
                   gap: 10,
                   alignItems:
                     'center',
@@ -495,8 +448,7 @@ export default function AdminPage() {
                   }
                   onChange={(e) =>
                     setValidated(
-                      e.target
-                        .checked
+                      e.target.checked
                     )
                   }
                 />
@@ -506,7 +458,6 @@ export default function AdminPage() {
                 commande.
               </label>
             </div>
-
 
             <button
               className="btn btn-primary btn-big"
