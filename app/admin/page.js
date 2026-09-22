@@ -104,27 +104,27 @@ export default function AdminPage() {
   }
 
   function updateItem(index, field, value) {
-    setParsed((current) => {
-      if (!current) {
-        return current;
-      }
+  setParsed((current) => {
+    if (!current) {
+      return current;
+    }
 
-      const items = [...current.items];
+    const items = [...current.items];
 
-      items[index] = {
-        ...items[index],
-        [field]:
-          field === 'requestedQty'
-            ? Number(value)
-            : value,
-      };
+    items[index] = {
+      ...items[index],
+      [field]:
+        field === 'requestedQty'
+          ? Number(value)
+          : value,
+    };
 
-      return {
-        ...current,
-        items,
-      };
-    });
-  }
+    return {
+      ...current,
+      items,
+    };
+  });
+}
 
   async function createOrder() {
     if (!parsed) {
@@ -339,16 +339,19 @@ export default function AdminPage() {
                 <thead>
                   <tr>
                     <th>
-                      Référence
+                    Référence
                     </th>
                     <th>
-                      Désignation
+                    Désignation
                     </th>
                     <th>
-                      Qté
+                    Qté
                     </th>
                     <th>
-                      Page
+                    Disponibilité
+                    </th>
+                    <th>
+                    Page
                     </th>
                   </tr>
                 </thead>
@@ -418,6 +421,39 @@ export default function AdminPage() {
                           />
                         </td>
 
+<td>
+  <select
+    value={
+      item.productionStatus || 'STOCK'
+    }
+    disabled={
+      item.isPreparable === false
+    }
+    onChange={(e) =>
+      updateItem(
+        index,
+        'productionStatus',
+        e.target.value
+      )
+    }
+    style={{
+      minWidth: 120,
+      padding: '8px',
+      borderRadius: 6,
+      border: '1px solid #ccc',
+      fontWeight: 600,
+    }}
+  >
+    <option value="STOCK">
+      EN STOCK
+    </option>
+
+    <option value="OF">
+      OF
+    </option>
+  </select>
+</td>
+                              
                         <td>
                           {item.page}
                         </td>
